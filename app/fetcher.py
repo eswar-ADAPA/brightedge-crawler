@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 import httpx
 
+from . import robots
+
 DEFAULT_UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -34,13 +36,23 @@ class FetchError(Exception):
     pass
 
 
+class RobotsDisallowed(FetchError):
+    """Raised when robots.txt forbids fetching the URL."""
+
+
 async def fetch(
     url: str,
     *,
     timeout_s: float = 15.0,
     max_bytes: int = 5_000_000,
     retries: int = 2,
+    respect_robots: bool = True,
 ) -> FetchResult:
+    if respect_robots:
+        allowed = await robots.is_allowed(url, DEFAULT_UA)
+        if not allowed:
+            raise RobotsDisallowed(f"robots.txt disallows fetching {url}")
+
     last_exc: Exception | None = None
     backoff = 0.5
     # Try HTTP/2 first; fall back to HTTP/1.1 on stream reset (some sites — e.g.

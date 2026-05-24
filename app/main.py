@@ -11,8 +11,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .classifier import classify
-from .extractor import extract
-from .fetcher import FetchError, fetch
+from .extractor import PageMetadata, extract
+from .fetcher import FetchError, RobotsDisallowed, fetch
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -30,6 +30,18 @@ app = FastAPI(
 )
 
 
+def _detect_partial(meta: PageMetadata) -> str | None:
+    """Return a reason string if the page looks like an anti-bot interstitial.
+
+    Amazon's "Click the button to continue shopping" stub and similar pages
+    return 200 with a real-looking title but no real body. Flagging these
+    keeps callers from treating shallow keywords as a real classification.
+    """
+    if meta.word_count < 50 and not meta.json_ld and not meta.description:
+        return f"thin_content (word_count={meta.word_count}, no JSON-LD, no description)"
+    return None
+
+
 class TopicScore(BaseModel):
     keyword: str
     confidence: float
@@ -42,7 +54,12 @@ class ClassifyResponse(BaseModel):
     status: int
     elapsed_ms: int
     page_category: str
-    confidence: float
+    confidence: str = Field(description="low | medium | high")
+    partial: bool = Field(
+        default=False,
+        description="True if the fetched page looks like an anti-bot interstitial.",
+    )
+    partial_reason: str | None = None
     topics: list[str]
     structured_topics: list[str]
     keywords: list[TopicScore]
@@ -69,11 +86,17 @@ async def classify_url(
     started = time.time()
     try:
         fr = await fetch(url)
+    except RobotsDisallowed as exc:
+        # 451 Unavailable For Legal Reasons — closest semantic match for
+        # "we won't fetch this on principle." Some clients prefer 403; either
+        # is defensible.
+        raise HTTPException(status_code=451, detail=str(exc)) from exc
     except FetchError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     meta = extract(url, fr.final_url, fr.html)
     cls = classify(meta)
+    partial_reason = _detect_partial(meta)
 
     payload = ClassifyResponse(
         url=url,
@@ -83,6 +106,8 @@ async def classify_url(
         elapsed_ms=int((time.time() - started) * 1000),
         page_category=cls.page_category,
         confidence=cls.confidence,
+        partial=partial_reason is not None,
+        partial_reason=partial_reason,
         topics=cls.topics,
         structured_topics=cls.structured_topics,
         keywords=[TopicScore(keyword=k, confidence=c) for k, c in cls.keywords],
@@ -108,9 +133,11 @@ async def classify_url(
         },
     )
     log.info(
-        "classify domain=%s category=%s topics=%d ms=%d",
+        "classify domain=%s category=%s confidence=%s partial=%s topics=%d ms=%d",
         meta.domain,
         cls.page_category,
+        cls.confidence,
+        payload.partial,
         len(cls.topics),
         payload.elapsed_ms,
     )

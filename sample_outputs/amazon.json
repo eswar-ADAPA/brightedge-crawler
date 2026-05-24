@@ -3,9 +3,11 @@
     "final_url": "https://www.amazon.com/Cuisinart-CPT-122-Compact-2-SliceToaster/dp/B009GQ034C/ref=sr_1_1?s=kitchen&ie=UTF8&qid=1431620315&sr=1-1&keywords=toaster",
     "domain": "www.amazon.com",
     "status": 200,
-    "elapsed_ms": 475,
+    "elapsed_ms": 682,
     "page_category": "product",
-    "confidence": 0.65,
+    "confidence": "low",
+    "partial": true,
+    "partial_reason": "thin_content (word_count=21, no JSON-LD, no description)",
     "topics": [
         "Click the button",
         "Amazon.com Click",

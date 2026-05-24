@@ -16,7 +16,7 @@ from typing import Any
 
 import yake
 
-from .extractor import PageMetadata
+from .extractor import PageMetadata, flatten_json_ld
 
 
 # Coarse buckets — small + opinionated. The classifier maps schema.org @type
@@ -46,29 +46,14 @@ class Classification:
     topics: list[str] = field(default_factory=list)
     structured_topics: list[str] = field(default_factory=list)
     keywords: list[tuple[str, float]] = field(default_factory=list)
-    confidence: float = 0.0
+    confidence: str = "low"
     signals: dict[str, Any] = field(default_factory=dict)
 
 
-def _flatten_json_ld(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Walk @graph and nested @type entries."""
-    out: list[dict[str, Any]] = []
-    for block in blocks:
-        if not isinstance(block, dict):
-            continue
-        graph = block.get("@graph")
-        if isinstance(graph, list):
-            for g in graph:
-                if isinstance(g, dict):
-                    out.append(g)
-        else:
-            out.append(block)
-    return out
-
-
-def _categorize(meta: PageMetadata) -> tuple[str, float]:
+def _categorize(meta: PageMetadata) -> tuple[str, str]:
+    """Return (category, source). source ∈ {schema_org, url_pattern, none}."""
     types: set[str] = set()
-    for ld in _flatten_json_ld(meta.json_ld):
+    for ld in flatten_json_ld(meta.json_ld):
         t = ld.get("@type")
         if isinstance(t, str):
             types.add(t)
@@ -79,15 +64,14 @@ def _categorize(meta: PageMetadata) -> tuple[str, float]:
 
     for category, members in CATEGORY_MAP.items():
         if types & members:
-            return category, 0.9
+            return category, "schema_org"
 
-    # heuristic fallbacks
     url = meta.final_url.lower()
     if any(seg in url for seg in ("/dp/", "/product/", "/p/", "/buy/")):
-        return "product", 0.6
+        return "product", "url_pattern"
     if any(seg in url for seg in ("/blog/", "/article/", "/news/", "/story/", "/202")):
-        return "article", 0.55
-    return "other", 0.3
+        return "article", "url_pattern"
+    return "other", "none"
 
 
 def _structured_topics(meta: PageMetadata) -> list[str]:
@@ -106,7 +90,7 @@ def _structured_topics(meta: PageMetadata) -> list[str]:
         seen.add(key)
         topics.append(v)
 
-    for ld in _flatten_json_ld(meta.json_ld):
+    for ld in flatten_json_ld(meta.json_ld):
         if not isinstance(ld, dict):
             continue
         # Product attributes
@@ -185,12 +169,26 @@ def _keyword_topics(meta: PageMetadata, max_kw: int = 12) -> list[tuple[str, flo
     return out
 
 
+def _confidence(category_source: str, has_structured: bool, has_keywords: bool) -> str:
+    """Map signal availability to a coarse confidence label.
+
+    high  — schema.org told us the category AND we got structured topics
+    medium — schema.org told us the category OR we got both kinds of topics
+    low   — only URL pattern / keyword fallback
+    """
+    if category_source == "schema_org" and has_structured:
+        return "high"
+    if category_source == "schema_org" or (has_structured and has_keywords):
+        return "medium"
+    return "low"
+
+
 def classify(meta: PageMetadata) -> Classification:
-    category, cat_conf = _categorize(meta)
+    category, category_source = _categorize(meta)
     structured = _structured_topics(meta)
     keywords = _keyword_topics(meta)
 
-    # Merge: structured topics first (high precision), then keyword phrases
+    # Structured topics first (high precision), then keyphrase topics
     seen: set[str] = set()
     merged: list[str] = []
     for t in structured:
@@ -204,19 +202,14 @@ def classify(meta: PageMetadata) -> Classification:
             seen.add(key)
             merged.append(kw)
 
-    overall_conf = cat_conf
-    if structured:
-        overall_conf = min(1.0, overall_conf + 0.1)
-    if keywords:
-        overall_conf = min(1.0, overall_conf + 0.05)
-
     return Classification(
         page_category=category,
         topics=merged[:20],
         structured_topics=structured,
         keywords=keywords,
-        confidence=round(overall_conf, 3),
+        confidence=_confidence(category_source, bool(structured), bool(keywords)),
         signals={
+            "category_source": category_source,
             "has_json_ld": bool(meta.json_ld),
             "has_open_graph": bool(meta.open_graph),
             "word_count": meta.word_count,

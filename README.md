@@ -29,7 +29,10 @@ cd submission
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-# CLI smoke test against the 3 URLs from the assignment:
+# Unit tests (fast, hermetic):
+.venv/bin/pytest
+
+# CLI smoke test against the 3 URLs from the assignment (hits the network):
 .venv/bin/python -m tests.smoke
 
 # HTTP server:
@@ -68,7 +71,16 @@ gcloud run deploy brightedge-crawler-demo --source . --region us-central1 --allo
 - **Page category**: a coarse label (`product`, `article`, `video`,
   `recipe`, `event`, `organization`, `website`, `other`) derived primarily
   from schema.org `@type` and OpenGraph `og:type`, with URL-pattern fallbacks.
+- **Confidence**: `high` (schema.org + structured topics), `medium`
+  (schema.org OR both signal sources), or `low` (URL-pattern fallback only).
+- **Partial flag**: `partial: true` with a `partial_reason` when the fetched
+  page looks like an anti-bot interstitial (thin content, no JSON-LD, no
+  description) — so callers don't treat shallow keywords as a real result.
 - **Provenance**: final URL after redirects, HTTP status, fetch time.
+
+The service respects `robots.txt` — a disallowed URL returns HTTP 451 with
+a clear message rather than fetching anyway. robots.txt responses are
+cached in memory for 6 hours (per the design doc).
 
 ## Sample results (full JSON in [sample_outputs/](sample_outputs/))
 

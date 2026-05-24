@@ -45,11 +45,33 @@ def _first(*vals: str | None) -> str | None:
     return None
 
 
-def _meta(soup: BeautifulSoup, **attrs: str) -> str | None:
+def _meta(soup: BeautifulSoup, attrs: dict[str, str]) -> str | None:
+    """Return the `content` of the first <meta> tag matching `attrs`."""
     tag = soup.find("meta", attrs=attrs)
     if tag and tag.get("content"):
         return tag["content"].strip()
     return None
+
+
+def flatten_json_ld(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Walk @graph entries so callers can treat JSON-LD as a flat list.
+
+    Many sites (CNN, NYT) wrap their JSON-LD in `{"@graph": [...]}` rather
+    than emitting top-level objects. Without flattening, downstream lookups
+    for @type / author / keywords miss those entries.
+    """
+    out: list[dict[str, Any]] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        graph = block.get("@graph")
+        if isinstance(graph, list):
+            for g in graph:
+                if isinstance(g, dict):
+                    out.append(g)
+        else:
+            out.append(block)
+    return out
 
 
 def _collect_json_ld(soup: BeautifulSoup) -> list[dict[str, Any]]:
@@ -62,13 +84,54 @@ def _collect_json_ld(soup: BeautifulSoup) -> list[dict[str, Any]]:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError:
-            # some sites embed multiple JSON objects or trailing commas; skip
+            # Some sites embed multiple JSON objects or trailing commas; skip
             continue
         if isinstance(parsed, list):
             out.extend(x for x in parsed if isinstance(x, dict))
         elif isinstance(parsed, dict):
             out.append(parsed)
     return out
+
+
+def _extract_author(json_ld: list[dict[str, Any]]) -> str | None:
+    """Pull an author name out of (flattened) JSON-LD."""
+    for ld in flatten_json_ld(json_ld):
+        author = ld.get("author")
+        if isinstance(author, str) and author.strip():
+            return author.strip()
+        if isinstance(author, dict):
+            name = author.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+        if isinstance(author, list):
+            for entry in author:
+                if isinstance(entry, dict):
+                    name = entry.get("name")
+                    if isinstance(name, str) and name.strip():
+                        return name.strip()
+                elif isinstance(entry, str) and entry.strip():
+                    return entry.strip()
+    return None
+
+
+def _extract_published(json_ld: list[dict[str, Any]]) -> str | None:
+    for ld in flatten_json_ld(json_ld):
+        v = ld.get("datePublished")
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+def _extract_page_type(json_ld: list[dict[str, Any]]) -> str | None:
+    for ld in flatten_json_ld(json_ld):
+        t = ld.get("@type")
+        if isinstance(t, str) and t.strip():
+            return t.strip()
+        if isinstance(t, list):
+            for entry in t:
+                if isinstance(entry, str) and entry.strip():
+                    return entry.strip()
+    return None
 
 
 def _extract_body(html: str, soup: BeautifulSoup) -> str:
@@ -81,7 +144,6 @@ def _extract_body(html: str, soup: BeautifulSoup) -> str:
         )
         if text and text.strip():
             return text.strip()
-    # Fallback: strip script/style and take visible text
     for tag in soup(["script", "style", "noscript", "template"]):
         tag.decompose()
     text = soup.get_text(separator=" ", strip=True)
@@ -110,9 +172,10 @@ def extract(url: str, final_url: str, html: str) -> PageMetadata:
     )
 
     description = _first(
-        _meta(soup, attrs={"name": "description"}),
+        _meta(soup, {"name": "description"}),
         og.get("description"),
         tw.get("description"),
+        _meta(soup, {"property": "description"}),
     )
 
     canonical = None
@@ -127,30 +190,18 @@ def extract(url: str, final_url: str, html: str) -> PageMetadata:
     json_ld = _collect_json_ld(soup)
 
     author = _first(
-        _meta(soup, attrs={"name": "author"}),
+        _meta(soup, {"name": "author"}),
         og.get("article:author"),
-        next(
-            (
-                (ld.get("author") or {}).get("name")
-                if isinstance(ld.get("author"), dict)
-                else (ld.get("author") if isinstance(ld.get("author"), str) else None)
-                for ld in json_ld
-                if "author" in ld
-            ),
-            None,
-        ),
+        _extract_author(json_ld),
     )
 
     published = _first(
-        _meta(soup, attrs={"property": "article:published_time"}),
-        _meta(soup, attrs={"name": "pubdate"}),
-        next((ld.get("datePublished") for ld in json_ld if "datePublished" in ld), None),
+        _meta(soup, {"property": "article:published_time"}),
+        _meta(soup, {"name": "pubdate"}),
+        _extract_published(json_ld),
     )
 
-    page_type = _first(
-        og.get("type"),
-        next((ld.get("@type") if isinstance(ld.get("@type"), str) else None for ld in json_ld), None),
-    )
+    page_type = _first(og.get("type"), _extract_page_type(json_ld))
 
     h1s = [h.get_text(strip=True) for h in soup.find_all("h1")][:10]
     h2s = [h.get_text(strip=True) for h in soup.find_all("h2")][:25]
