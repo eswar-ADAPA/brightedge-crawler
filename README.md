@@ -87,21 +87,21 @@ headless-browser fallback.
 
 ## How Part 1 maps to the assignment
 
-- **Input**: any URL ✅
-- **Output**: HTML metadata (title, description, body, etc.) ✅
+- **Input**: any URL
+- **Output**: HTML metadata (title, description, body, etc.)
 - **Plus**: topic list + page category, as the assignment also requested
-  (*"classify the page, and return a list of relevant topics"*) ✅
-- **Language**: Python ✅
+  (*"classify the page, and return a list of relevant topics"*)
+- **Language**: Python
 - **Cloud demo**: see [deploy/cloud-run.md](deploy/cloud-run.md). The
   container is portable across Cloud Run / App Runner / Container Apps.
 
 ## Allowed / not allowed
 
 - Uses 3rd-party libraries for **parsing**: `beautifulsoup4`, `lxml`,
-  `trafilatura` for body extraction, `yake` for keyword extraction. ✅
+  `trafilatura` for body extraction, `yake` for keyword extraction.
   (Assignment FAQ: *"Can I use external libraries for HTML parsing? Yes."*)
 - **Does not** call any 3rd-party service that performs the same end-to-end
-  function (e.g. Diffbot, Apify, ScrapingBee). ✅
+  function (e.g. Diffbot, Apify, ScrapingBee).
 
 ## AI assistance disclosure
 
