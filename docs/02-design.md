@@ -155,9 +155,13 @@ message PageRecord {
 
   // Classification (re-runnable)
   string page_category       = 60;
-  float  category_confidence = 61;
+  float  category_confidence = 61;   // Part 1 ships a coarse low|medium|high
+                                     // string; production stores a float so
+                                     // downstream consumers can sort/threshold.
   repeated Topic topics      = 62;
   string classifier_version  = 63;
+  bool   partial             = 64;   // anti-bot interstitial or thin content
+  string partial_reason      = 65;
 }
 ```
 

@@ -9,16 +9,24 @@ billions of URLs per month.
 submission/
 ├── app/                      # Part 1 — the working service
 │   ├── fetcher.py            #   HTTP fetch (HTTP/2 + retries + UA shaping)
+│   ├── robots.py             #   robots.txt check with 6-hour cache
 │   ├── extractor.py          #   HTML → metadata (OG, JSON-LD, body)
 │   ├── classifier.py         #   page_category + ranked topics
 │   └── main.py               #   FastAPI app, GET /classify?url=…
-├── tests/smoke.py            # Runs the 3 sample URLs from the assignment
+├── tests/
+│   ├── smoke.py              # Live integration test (hits the 3 assignment URLs)
+│   ├── fixtures.py           # HTML fixtures used by the unit tests
+│   ├── test_extractor.py     # 5 unit tests
+│   ├── test_classifier.py    # 6 unit tests
+│   ├── test_partial.py       # 3 unit tests (anti-bot stub detection)
+│   └── test_robots.py        # 3 unit tests (robots.txt allow / deny)
 ├── sample_outputs/           # Captured JSON responses for the 3 URLs
 ├── docs/
 │   ├── 02-design.md          # Part 2 — scale design, schema, SLOs, monitoring
-│   └── 03-poc-plan.md        # Part 3 — PoC plan, risks, release plan
-├── deploy/cloud-run.md       # Demo deployment instructions (GCP / AWS)
-├── Dockerfile                # Production container
+│   └── 03-poc-plan.md        # Part 3 — 3-week PoC plan + release plan
+├── deploy/cloud-run.md       # Optional cloud deploy instructions (GCP / AWS)
+├── Dockerfile                # Container for local docker run or cloud deploy
+├── pyproject.toml            # pytest + ruff config
 └── requirements.txt
 ```
 
@@ -50,9 +58,11 @@ docker build -t brightedge-crawler .
 docker run -p 8080:8080 brightedge-crawler
 ```
 
-## Deploy a public demo
+## Optional: deploy to a public URL
 
-See [deploy/cloud-run.md](deploy/cloud-run.md). One command:
+Not required to grade the submission — local `uvicorn` or `docker run` works.
+If you want a live URL, the container deploys to Google Cloud Run in one
+command (see [deploy/cloud-run.md](deploy/cloud-run.md)):
 
 ```bash
 gcloud run deploy brightedge-crawler-demo --source . --region us-central1 --allow-unauthenticated
@@ -84,18 +94,18 @@ cached in memory for 6 hours (per the design doc).
 
 ## Sample results (full JSON in [sample_outputs/](sample_outputs/))
 
-| URL | Category | Confidence | Notes |
-|---|---|---|---|
-| CNN article on Google AI study | `article` | 1.0 | Full schema.org `NewsArticle` JSON-LD with `articleSection` ⇒ structured topics (`business`, `tech`) plus keyphrase topics (`artificial intelligence`, `Google study`, `tech industry workers`). |
-| Amazon Cuisinart toaster product | `product` | 0.65 | Classified correctly via URL pattern (`/dp/`). On a successful fetch we get the real title (`Amazon.com: Cuisinart CPT-122 2-Slice Compact Plastic Toaster…`) and product-feature topics; on a bot-challenge fetch we get the truncated "Click the button" stub. Both outcomes are surfaced honestly — this is exactly the kind of variance the Tier-B/C plan in [docs/02-design.md §2](docs/02-design.md) is designed to absorb. |
-| REI blog post | (blocked) | — | **Akamai bot mitigation drops the connection at TLS layer.** Pipeline returns a structured 502 with the error class. This is the real-world Tier-C case (headless browser + residential IPs) described in [docs/02-design.md §2](docs/02-design.md). |
+| URL | Category | Confidence | Partial | Notes |
+|---|---|---|---|---|
+| CNN article on Google AI study | `article` | `high` | `false` | Full schema.org `NewsArticle` JSON-LD with `articleSection` → structured topics (`business`, `tech`) plus keyphrase topics (`artificial intelligence`, `Google study`, `tech industry workers`). |
+| Amazon Cuisinart toaster product | `product` | `low` | `true` | Amazon returned the "Click the button to continue shopping" anti-bot interstitial on this fetch. The pipeline classified by URL pattern (`/dp/`) but flagged `partial: true, partial_reason: "thin_content (word_count=21, no JSON-LD, no description)"` so the caller knows not to trust the topics. On a fetch that gets through, you'd see the real product title and structured product features. |
+| REI blog post | (blocked) | — | — | Akamai bot mitigation drops the connection at the TLS layer. Pipeline returns a structured 502 with the error class (`ReadTimeout`). This is the Tier-C case (headless browser + residential IPs) described in [docs/02-design.md §2](docs/02-design.md). |
 
 Together, the three URLs sample three points on the difficulty curve:
 fully cooperative (CNN), partially defended (Amazon, sometimes serves real
-HTML, sometimes serves a challenge), and hard-defended (REI / Akamai). Part 1
-handles the first cleanly, the second on a best-effort basis, and surfaces
-the third as a known limitation that Part 2 addresses with a Tier-C
-headless-browser fallback.
+HTML, sometimes serves a challenge), and hard-defended (REI / Akamai). The
+demo handles the first cleanly, flags the second as partial rather than
+faking confidence, and surfaces the third as a known limitation that Part 2
+addresses with a Tier-C headless-browser fallback.
 
 ## How Part 1 maps to the assignment
 
@@ -104,8 +114,9 @@ headless-browser fallback.
 - **Plus**: topic list + page category, as the assignment also requested
   (*"classify the page, and return a list of relevant topics"*)
 - **Language**: Python
-- **Cloud demo**: see [deploy/cloud-run.md](deploy/cloud-run.md). The
-  container is portable across Cloud Run / App Runner / Container Apps.
+- **Public location** for the code: this GitHub repository. Optional one-command
+  Cloud Run deploy in [deploy/cloud-run.md](deploy/cloud-run.md) if a live
+  URL is wanted.
 
 ## Allowed / not allowed
 
@@ -119,16 +130,21 @@ headless-browser fallback.
 
 Per the assignment FAQ, here is how AI was used:
 
-- **Claude (Anthropic)** was used to scaffold the Python project structure,
-  write the initial drafts of `fetcher.py`, `extractor.py`, `classifier.py`,
-  and `main.py`, and to draft the design documents in `docs/`. All code was
-  reviewed, edited, and tested by the author.
-- AI was specifically helpful for: (1) enumerating the schema.org `@type`
-  values to map to coarse categories, (2) drafting the protobuf schema in
-  the design doc, (3) producing the cost model table in §5 of the design
-  doc as a starting point for the author's own estimates.
-- AI was **not** used for fetching, parsing, or classifying pages at
-  runtime — the service uses only the libraries listed above.
+- **Claude (Anthropic)** was used as a pair-programming assistant to draft
+  the initial Python files (`fetcher.py`, `extractor.py`, `classifier.py`,
+  `main.py`, `robots.py`), the unit tests under `tests/`, and the design
+  documents in `docs/`. I reviewed every change, ran the tests, and edited
+  for correctness and voice.
+- During review I caught and fixed a real bug in the AI-drafted
+  `extractor._meta()` helper (a `**kwargs` mistake that silently lost meta
+  tags) and added a regression test for it; this is in the git history.
+- AI was particularly helpful for: enumerating schema.org `@type` values
+  for the category map, drafting the protobuf schema in the design doc,
+  scaffolding the test fixtures, and a first-pass cost-model table that I
+  then refined.
+- AI is **not** called at runtime — no LLM is in the request path. The
+  service uses only the libraries listed in `requirements.txt`
+  (BeautifulSoup, trafilatura, YAKE, FastAPI, httpx).
 
 ## Design + PoC documents
 
@@ -136,7 +152,7 @@ Per the assignment FAQ, here is how AI was used:
   billions of URLs/month: tiered crawl, dedupe, unified protobuf schema,
   hot KV + analytical lake, SLOs/SLAs, error budgets, cost model,
   reliability, monitoring.
-- [docs/03-poc-plan.md](docs/03-poc-plan.md) — 6-week PoC plan with
+- [docs/03-poc-plan.md](docs/03-poc-plan.md) — 3-week PoC plan with
   workstream breakdown, knowns vs. unknowns vs. risks, evaluation criteria,
   staged release plan, and staffing assumptions.
 
