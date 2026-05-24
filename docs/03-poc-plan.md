@@ -2,203 +2,172 @@
 
 The Part 1 service works on one URL. Part 2 describes what production
 should look like. This doc is the bridge: what I'd actually build in the
-first six weeks, in what order, and how I'd know it worked.
+first three weeks to prove the pipeline shape end-to-end, and what comes
+after.
+
+I'm deliberately keeping this short. A PoC is meant to *de-risk* the
+design, not pre-build production.
 
 ---
 
-## 1. What the PoC should prove
+## 1. What the PoC has to prove
 
-> The whole pipeline (queue → crawl → parse → classify → store → read)
-> works end-to-end on **10 million URLs** across `amazon.com`,
-> `walmart.com`, and `bestbuy.com`, hitting the SLOs from
-> [docs/02-design.md](02-design.md) at roughly 1/200th of full scale.
+> The pipeline (queue → crawl → parse → classify → store → read) works
+> end-to-end on **10 million URLs** across `amazon.com`, `walmart.com`,
+> and `bestbuy.com`, on a single region, with enough observability to
+> tell when it breaks.
 
-I picked 10 million because that's the smallest number where the
-problems start being real ones:
+I picked 10 million because it's the smallest number where the problems
+become real: queue depth varies, Parquet's small-file issue shows up,
+per-host rate limits start to bite. It's also cheap to redo (~$300 in
+crawl + storage) if we mess something up.
 
-- Queue depth varies enough that auto-scaling matters.
-- Parquet's "too many small files" problem shows up.
-- Per-host rate limits actually bite (especially Amazon).
-- It's still cheap (~$300 in crawl + storage) so we can redo it cleanly
-  if we mess something up.
+### Done = these four things are true
 
-### How we'd know it worked
+1. ≥ 90% of the 10 M URLs have a `PageRecord` written to both the KV
+   store and the lake.
+2. A topic-rollup query over all 10 M rows runs in under 30 seconds.
+3. The Read API serves 1,000 QPS at p99 < 80 ms in a 30-min synthetic
+   load test.
+4. Basic dashboards exist for crawl health, lake lag, and API latency,
+   and they show actual numbers, not zeros.
 
-The PoC is done when all six of these are true:
-
-1. At least **90%** of the 10 M URLs have a `PageRecord` written to both
-   the KV store and the lake.
-2. A topic-rollup query over all 10 M rows runs in under **30 seconds**
-   in BigQuery.
-3. The read API serves **1,000 QPS** at p99 < 80 ms in a synthetic load
-   test.
-4. The dashboards for crawl health, lake lag, and API SLIs exist and
-   are accurate.
-5. One simulated regional failure (drain one region, traffic continues
-   from the other) finishes with less than 5 minutes of crawl pause.
-6. A runbook exists for the three most likely incidents — queue backlog,
-   host block, classifier rollback.
-
-If we hit all six, we move on. If we don't, the PoC review gets specific
-about what to fix; we don't paper over a miss.
+That's the bar. Anything else — Tier C, chaos drills, runbooks, cost
+dashboards — comes after we know the spine works.
 
 ---
 
-## 2. Work to do
-
-| # | Stream | Effort | Depends on |
-|---|---|---|---|
-| W1 | Harden the fetcher (Tier A + B, retries, robots cache) | 1.5 weeks | — |
-| W2 | URL frontier + dedupe (queue + Redis bloom filter) | 1 week | — |
-| W3 | Containerize the Part 1 parse + classify worker | 0.5 weeks | — |
-| W4 | Raw HTML object store layout + idempotent writer | 0.5 weeks | — |
-| W5 | Lake writer (Parquet/Iceberg) + BigQuery table | 1 week | W4 |
-| W6 | Hot KV writer + Read API | 1 week | — |
-| W7 | Tier-C Playwright fallback (pilot, one host) | 1 week | W1 |
-| W8 | Prometheus, Grafana dashboards, OTel tracing | 1 week | W1, W6 |
-| W9 | Cost dashboard and per-component billing tags | 0.5 weeks | W8 |
-| W10 | Load test harness (k6 against Read API) | 0.5 weeks | W6 |
-| W11 | Runbooks + a game-day exercise | 0.5 weeks | W8 |
-
-W1–W6 are the critical path. Everything else can run alongside.
-
----
-
-## 3. A six-week plan
+## 2. The three-week plan
 
 ```
-Week 1   W1 fetcher, W2 frontier, W4 raw store — in parallel
-Week 2   W1 finishes; W3 worker integration; W6 KV writer starts
-Week 3   W5 lake writer; W8 observability scaffolding; W7 Tier-C pilot
-Week 4   End-to-end on 1 million URLs (internal dogfood).
-         Iterate on whichever parts of parsing/classification are weak.
-Week 5   Scale to 10 million URLs. W10 load test runs. W9 cost tags applied.
-Week 6   W11 runbooks + a game-day. PoC review. Go/no-go for prod ramp.
+Week 1   Build the spine
+         - Fetcher (Tier A only): httpx + retries + robots cache
+         - URL queue (PubSub / SQS) + Redis dedupe bloom
+         - Raw HTML object store writer (idempotent, keyed by sha256)
+         - Parse + classify worker = the Part 1 container
+
+Week 2   Wire up storage and reads
+         - Parquet/Iceberg lake writer, partitioned by date + domain
+         - Hot KV writer (Bigtable or DynamoDB)
+         - Read API: GET /metadata, GET /classify
+         - Basic observability: structured logs + Prometheus + 3 dashboards
+
+Week 3   Scale and measure
+         - Dry run on 1 M URLs, fix whatever cracks
+         - Scale to 10 M URLs
+         - Run the 30-min load test against the Read API
+         - PoC review: walk through the four "done" criteria with numbers
 ```
 
-Week 4 is deliberately a slack week — by then I expect something to be
-wrong that nobody predicted, and the team needs space to fix it without
-falling off the schedule.
+### What's deliberately *not* in the PoC
+
+- **Tier B + C crawl** (residential IPs, Playwright). Tier A is enough
+  to prove the pipeline. Adding tiers earlier just lets us claim more
+  coverage; it doesn't validate any new design risk.
+- **Multi-region**. One region for the PoC. Multi-region is part of the
+  production ramp, not the proof-of-concept.
+- **Per-host adaptive rate limiting.** Naive 4-concurrent-per-host is
+  fine at 10 M URLs. AIMD is a production refinement.
+- **Game day / chaos drills.** Before GA, yes. Before the PoC review, no.
+- **Cost dashboard**. We can read the billing export by hand for now.
+
+Cutting these is what turns 6 weeks into 3.
 
 ---
 
-## 4. What I know and what I don't
+## 3. What I know, what I don't, what could go wrong
 
-### Easy and known
+### Low risk (already de-risked)
 
-- HTML parsing, metadata extraction, topic extraction — already works,
-  it's a throughput-tuning exercise from here.
-- Object-store writes. Vanilla.
-- Stateless workers behind a queue. Standard pattern.
+- HTML parsing + metadata extraction — working in Part 1.
+- Object store ingest, stateless workers behind a queue — vanilla patterns.
+- The 3 test URLs already gave me one clean case (CNN), one variable case
+  (Amazon), one hard-blocked case (REI). I know the shape of what we'll hit.
 
-### Known but real work
+### Medium risk
 
-- **Per-host adaptive rate limiting.** A naive token bucket isn't enough.
-  I'd want AIMD (additive-increase, multiplicative-decrease) on
-  429/503 responses. About 3 days plus tuning per major host.
-- **Iceberg compaction.** Without it, after a few months we'd have
-  billions of tiny Parquet files and queries would crawl. Need a
-  scheduled compaction job from day one. About a week.
-- **Idempotency everywhere.** Queues redeliver. Every writer has to be
-  safe to replay. Easier to design in than retrofit.
+- **Iceberg / Parquet small-file problem.** Without compaction we'll have
+  millions of tiny files by the end of week 3. Need a scheduled compaction
+  job from day one.
+- **Idempotency.** Queues redeliver. Every writer has to be safe to replay.
+  Easier to design in than retrofit.
+- **Topic-quality ceiling with YAKE + JSON-LD.** This is the open question
+  I'd want to spike on alongside the build — label ~500 pages by hand,
+  measure F1, decide if a v2 classifier is needed before GA.
 
-### Things I'd want to spike on (open questions)
+### Biggest risks (and what I'd do about them)
 
-- **How many of our target hosts are bot-defended like REI?** I genuinely
-  don't know. Three days of work: sample 10,000 URLs per host, count
-  failures, decide if Tier C needs more budget.
-- **Is YAKE + JSON-LD good enough for topics?** Or do we need a
-  fine-tuned model? About a week: label ~1,000 pages by hand, measure F1
-  against the current pipeline. That tells us whether classifier quality
-  is the bottleneck or not.
-- **Hot KV: Bigtable, DynamoDB, or Spanner?** Depends on the read pattern.
-  Maybe 4 days replaying a synthetic trace against each.
-
-### Biggest risks
-
-| Risk | Likelihood | Impact | What I'd do about it |
-|---|---|---|---|
-| Tier C eats the budget | Medium | High | Hard cap at 5% of traffic. Dead-letter beyond N retries. |
-| Legal pushback from a target host | Low | High | Respect robots.txt. Identify the bot. Have a per-host kill switch. |
-| Classifier quality stalls | Medium | Medium | Lake stores raw signals, so re-classification is a job, not a re-crawl. |
-| Single-region capacity ceiling | Low | High | Spin up a second region by week 5. |
-| Hot-spotting in KV (Amazon traffic) | Medium | Medium | Hash-prefix partition keys; pre-split Bigtable tablets. |
+| Risk | What I'd do |
+|---|---|
+| Hot-spot in the KV (Amazon traffic dominates) | Hash-prefix the partition key from day one. |
+| Per-host blocks during scale-up | Per-host circuit breaker: 5 consecutive blocks → 30 min cooldown. |
+| Classifier change ruins recent rows | `classifier_version` per row; roll back is a query change, not a re-crawl. |
+| 10 M URLs cost more than budgeted | Hard cap on per-URL spend; bail at 1.5× the model. |
 
 ---
 
-## 5. How we'd evaluate the PoC
+## 4. How we'd evaluate the PoC
 
-Concrete numbers, not vibes. Pass/fail on each:
+Pass/fail, not vibes:
 
 | What | How we measure | Bar |
 |---|---|---|
-| Correctness | Replay 1,000 hand-labeled URLs; compare extracted fields against labels | ≥ 95% title match, ≥ 85% description, ≥ 80% top-3 topic overlap |
-| Throughput | Sustained 24-hour crawl rate | ≥ 500 URLs/sec with under 5% retries |
-| Read latency | 30 min of k6 at 1,000 QPS | p99 ≤ 80 ms, errors ≤ 0.1% |
-| Reliability | Chaos drill: kill half the workers, drain a zone | No data loss; backlog drained in 30 min |
+| Correctness | Replay 500 hand-labeled URLs; compare titles, descriptions, top topics | ≥ 95% title match, ≥ 80% top-3 topic overlap |
+| Throughput | Sustained crawl rate over the 10 M run | ≥ 500 URLs/sec, < 5% retries |
+| Read latency | k6 at 1,000 QPS for 30 min | p99 ≤ 80 ms, errors ≤ 0.1% |
 | Cost | Per-URL cost from the billing export | ≤ $0.00003 per URL |
-| Coverage | URLs producing useful metadata | ≥ 92% |
 
-The PoC review at end of week 6 walks through each row with the
-dashboards as evidence.
+A short review meeting at the end of week 3 walks through each row with
+the dashboards as evidence.
 
 ---
 
-## 6. Releasing to production
+## 5. After the PoC
 
-I would not flip a switch and send 2 billion URLs at this thing. I'd ramp:
+If the four "done" criteria are met, the PoC report becomes the input to
+a production ramp:
 
-| Stage | What | How long | What has to be true to advance |
-|---|---|---|---|
-| Internal | 10 M URLs/week from three known-friendly domains | 2 weeks | All SLOs met. On-call rotation set up. |
-| Shadow | 100 M URLs/week, results written but not served to customers | 2 weeks | No regressions vs. internal. Runbook drills passed. |
-| GA | 500 M URLs/week, then double weekly until 2 B/month | 4 weeks | Customer SLAs met. Cost within 20% of the model. |
+| Stage | Scope | Duration |
+|---|---|---|
+| Internal | 10 M URLs/week from friendly domains | 2 weeks |
+| Shadow | 100 M URLs/week, results written but not served | 2 weeks |
+| GA | Ramp 2× weekly to 2 B/month | 4 weeks |
 
-Each ramp step needs a **24-hour soak** at the new volume with green
-dashboards before advancing. If a burn-rate alert fires during soak, the
-ramp halts. We don't roll forward through a budget violation just to
-stay on the calendar.
+Each ramp step needs a 24-h soak at the new volume with green dashboards
+before advancing.
 
-### What "high-quality release" means here
+### What "high quality release" means here
 
 - Feature flags on the read path so we can dark-launch new fields.
-- Automatic rollback: bad classifier deploy → traffic served from the
-  previous classifier version. (Per-record `classifier_version` makes
-  this just a query change.)
-- Pre-prod load test that hits 2× the current peak. Never let production
-  traffic be the thing that reveals a capacity ceiling.
-- Runbooks + game days for the top five incident types **before** GA.
-- Cost dashboard reviewed weekly for the first two months. Alert on
-  1.5× baseline.
+- `classifier_version` per row, so a bad classifier deploy is a config
+  flip, not a re-crawl.
+- Pre-prod load test at 2× current peak before each ramp.
+- Runbooks for the top three incident types before GA: queue backlog,
+  host block, classifier rollback.
+- Cost dashboard reviewed weekly for the first two months.
+
+These didn't fit in the 3-week PoC, but they're not optional for prod.
 
 ---
 
-## 7. What this needs from the team
+## 6. Team
 
-To deliver in six weeks, the minimum that feels realistic:
+For a 3-week PoC, realistic minimum:
 
-- 2 backend engineers (crawl, KV, API)
-- 1 data engineer (lake, analytics)
-- 1 platform / SRE person (observability, cost, on-call)
-- 0.5 of a PM or TPM (scope, comms, risks)
-- A senior engineer for design review (~30% of their time)
+- 2 backend engineers
+- 0.5 SRE / platform (observability + the queue + cost setup)
+- 0.5 PM (scope, comms)
 
-Optional but useful: a part-time data scientist in weeks 4–6 to look at
-classifier quality and start planning a v2.
+The production ramp needs more — a data engineer for the lake, a full
+SRE for on-call. But not for the PoC.
 
 ---
 
-## 8. What comes after the PoC
+## 7. Next things after PoC (not committed)
 
-Not committed, but the next things I'd look at:
-
-- **Cheaper Tier C.** Sharing Chromium contexts within a domain cuts
-  per-page cost a lot — 5–10× is realistic.
-- **Classifier v2.** Use the hand-labeled data from the PoC to fine-tune
-  a small zero-shot model. Drop YAKE for English; keep it for languages
-  we don't have models for.
-- **Premium freshness tier.** Some customers will pay for "under 1 hour"
-  freshness. That probably means a separate streaming path.
-- **Sitemap and RSS ingestion.** Replace ad-hoc URL submission with
-  sitemap.xml-driven discovery for the hosts that publish one. Friendlier
-  to crawl, cheaper to operate.
+- **Tier B + C crawl.** Decide based on the actual block rate we see in
+  the PoC. If ≥ 10% of URLs are blocked, Tier B is worth building.
+- **Classifier v2.** Use the 500 hand-labeled pages from the PoC eval
+  to fine-tune a small zero-shot model.
+- **Sitemap / RSS ingestion.** Replace ad-hoc URL submission for hosts
+  that publish sitemaps. Friendlier and cheaper.
