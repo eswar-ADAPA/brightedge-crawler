@@ -1,0 +1,115 @@
+{
+    "url": "https://www.cnn.com/2025/09/23/tech/google-study-90-percent-tech-jobs-ai",
+    "final_url": "https://edition.cnn.com/2025/09/23/tech/google-study-90-percent-tech-jobs-ai",
+    "domain": "edition.cnn.com",
+    "status": 200,
+    "elapsed_ms": 474,
+    "page_category": "article",
+    "confidence": 1.0,
+    "topics": [
+        "business",
+        "tech",
+        "Business The overwhelming",
+        "Google",
+        "tech industry workers",
+        "CNN Business",
+        "Google study",
+        "tech industry",
+        "artificial intelligence",
+        "writing and modifying",
+        "overwhelming majority",
+        "software development",
+        "modifying code"
+    ],
+    "structured_topics": [
+        "business",
+        "tech"
+    ],
+    "keywords": [
+        {
+            "keyword": "Business The overwhelming",
+            "confidence": 0.984
+        },
+        {
+            "keyword": "Google",
+            "confidence": 0.982
+        },
+        {
+            "keyword": "tech industry workers",
+            "confidence": 0.982
+        },
+        {
+            "keyword": "CNN Business",
+            "confidence": 0.98
+        },
+        {
+            "keyword": "Google study",
+            "confidence": 0.98
+        },
+        {
+            "keyword": "tech industry",
+            "confidence": 0.977
+        },
+        {
+            "keyword": "artificial intelligence",
+            "confidence": 0.97
+        },
+        {
+            "keyword": "writing and modifying",
+            "confidence": 0.97
+        },
+        {
+            "keyword": "overwhelming majority",
+            "confidence": 0.969
+        },
+        {
+            "keyword": "tech",
+            "confidence": 0.967
+        },
+        {
+            "keyword": "software development",
+            "confidence": 0.967
+        },
+        {
+            "keyword": "modifying code",
+            "confidence": 0.958
+        }
+    ],
+    "metadata": {
+        "title": "Google says 90% of tech workers are now using AI at work | CNN Business",
+        "description": "The overwhelming majority of tech industry workers use artificial intelligence on the job for tasks like writing and modifying code, a new Google study has found.",
+        "canonical": "https://www.cnn.com/2025/09/23/tech/google-study-90-percent-tech-jobs-ai",
+        "language": "en",
+        "author": null,
+        "published": "2025-09-23T14:00:10.082Z",
+        "site_name": "CNN",
+        "page_type": "article",
+        "image": "https://media.cnn.com/api/v1/images/stellar/prod/gettyimages-1341307279.jpg?c=16x9&q=w_800,c_fill",
+        "open_graph": {
+            "title": "Google says 90% of tech workers are now using AI at work | CNN Business",
+            "image": "https://media.cnn.com/api/v1/images/stellar/prod/gettyimages-1341307279.jpg?c=16x9&q=w_800,c_fill",
+            "type": "article",
+            "url": "https://www.cnn.com/2025/09/23/tech/google-study-90-percent-tech-jobs-ai",
+            "site_name": "CNN"
+        },
+        "twitter": {
+            "title": "Google says 90% of tech workers are now using AI at work | CNN Business",
+            "description": "The overwhelming majority of tech industry workers use artificial intelligence on the job for tasks like writing and modifying code, a new Google study has found.",
+            "image": "https://media.cnn.com/api/v1/images/stellar/prod/gettyimages-1341307279.jpg?c=16x9&q=w_800,c_fill",
+            "card": "summary_large_image",
+            "site": "@CNNbusiness"
+        },
+        "json_ld_types": [
+            "NewsArticle"
+        ],
+        "h1": [
+            "Google says 90% of tech workers are now using AI at work"
+        ],
+        "h2": [
+            "Download the CNN app",
+            "Download the CNN app"
+        ],
+        "word_count": 621,
+        "body_excerpt": "The overwhelming majority of tech industry workers use artificial intelligence on the job for tasks like writing and modifying code, a new Google study has found.\nThe report, coming from Google\u2019s DORA research division and based on 5,000 responses from technology professionals around the world, found that 90% of respondents are using AI in their job, up 14% from last year.\nThe findings come as the"
+    }
+}

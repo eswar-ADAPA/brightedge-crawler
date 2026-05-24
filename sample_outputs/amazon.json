@@ -1,0 +1,92 @@
+{
+    "url": "http://www.amazon.com/Cuisinart-CPT-122-Compact-2-SliceToaster/dp/B009GQ034C/ref=sr_1_1?s=kitchen&ie=UTF8&qid=1431620315&sr=1-1&keywords=toaster",
+    "final_url": "https://www.amazon.com/Cuisinart-CPT-122-Compact-2-SliceToaster/dp/B009GQ034C/ref=sr_1_1?s=kitchen&ie=UTF8&qid=1431620315&sr=1-1&keywords=toaster",
+    "domain": "www.amazon.com",
+    "status": 200,
+    "elapsed_ms": 475,
+    "page_category": "product",
+    "confidence": 0.65,
+    "topics": [
+        "Click the button",
+        "Amazon.com Click",
+        "continue shopping",
+        "shopping",
+        "Click",
+        "Amazon.com",
+        "continue",
+        "Privacy Policy",
+        "button",
+        "Policy",
+        "Inc.",
+        "1996-2025"
+    ],
+    "structured_topics": [],
+    "keywords": [
+        {
+            "keyword": "Click the button",
+            "confidence": 0.963
+        },
+        {
+            "keyword": "Amazon.com Click",
+            "confidence": 0.957
+        },
+        {
+            "keyword": "continue shopping",
+            "confidence": 0.943
+        },
+        {
+            "keyword": "shopping",
+            "confidence": 0.895
+        },
+        {
+            "keyword": "Click",
+            "confidence": 0.895
+        },
+        {
+            "keyword": "Amazon.com",
+            "confidence": 0.846
+        },
+        {
+            "keyword": "continue",
+            "confidence": 0.814
+        },
+        {
+            "keyword": "Privacy Policy",
+            "confidence": 0.78
+        },
+        {
+            "keyword": "button",
+            "confidence": 0.763
+        },
+        {
+            "keyword": "Policy",
+            "confidence": 0.735
+        },
+        {
+            "keyword": "Inc.",
+            "confidence": 0.735
+        },
+        {
+            "keyword": "1996-2025",
+            "confidence": 0.708
+        }
+    ],
+    "metadata": {
+        "title": "Amazon.com",
+        "description": null,
+        "canonical": null,
+        "language": "en-us",
+        "author": null,
+        "published": null,
+        "site_name": null,
+        "page_type": null,
+        "image": null,
+        "open_graph": {},
+        "twitter": {},
+        "json_ld_types": [],
+        "h1": [],
+        "h2": [],
+        "word_count": 21,
+        "body_excerpt": "Click the button below to continue shopping\nContinue shopping\nConditions of Use\nPrivacy Policy\n\u00a9 1996-2025, Amazon.com, Inc. or its affiliates"
+    }
+}
